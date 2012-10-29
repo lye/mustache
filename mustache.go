@@ -317,55 +317,6 @@ func (tmpl *Template) parse() error {
 	return nil
 }
 
-// See if name is a method of the value at some level of indirection.
-// The return values are the result of the call (which may be nil if
-// there's trouble) and whether a method of the right name exists with
-// any signature.
-func callMethod(data reflect.Value, name string) (result reflect.Value, found bool) {
-	found = false
-	// Method set depends on pointerness, and the value may be arbitrarily
-	// indirect.  Simplest approach is to walk down the pointer chain and
-	// see if we can find the method at each step.
-	// Most steps will see NumMethod() == 0.
-	for {
-		typ := data.Type()
-		if nMethod := data.Type().NumMethod(); nMethod > 0 {
-			for i := 0; i < nMethod; i++ {
-				method := typ.Method(i)
-				if method.Name == name {
-
-					found = true // we found the name regardless
-					// does receiver type match? (pointerness might be off)
-					if typ == method.Type.In(0) {
-						return call(data, method), found
-					}
-				}
-			}
-		}
-		if nd := data; nd.Kind() == reflect.Ptr {
-			data = nd.Elem()
-		} else {
-			break
-		}
-	}
-	return
-}
-
-// Invoke the method. If its signature is wrong, return nil.
-func call(v reflect.Value, method reflect.Method) reflect.Value {
-	funcType := method.Type
-	// Method must take no arguments, meaning as a func it has one argument (the receiver)
-	if funcType.NumIn() != 1 {
-		return reflect.Value{}
-	}
-	// Method must return a single value.
-	if funcType.NumOut() == 0 {
-		return reflect.Value{}
-	}
-	// Result will be the zeroth element of the returned slice.
-	return method.Func.Call([]reflect.Value{v})[0]
-}
-
 // Evaluate interfaces and pointers looking for a value that can look up the name, via a
 // struct field, method, or map key, and return the result of the lookup.
 func lookup(contextChain []interface{}, name string) reflect.Value {
@@ -380,15 +331,47 @@ Outer:
 		v := ctx.(reflect.Value)
 		for v.IsValid() {
 			typ := v.Type()
-			if n := v.Type().NumMethod(); n > 0 {
-				for i := 0; i < n; i++ {
-					m := typ.Method(i)
-					mtyp := m.Type
-					if m.Name == name && mtyp.NumIn() == 1 {
-						return v.Method(i).Call(nil)[0]
+
+			/* Wrap a helper function that invokes a method in a value if the method
+			 * is valid, handling whether or not it should accept a receiver. */
+			runMethod := func(v reflect.Value, method reflect.Method) (reflect.Value, bool) {
+				fun := method.Func
+
+				if fun.IsNil() || method.Type.NumOut() == 0 {
+					return v, false
+				}
+
+				if method.Type.NumIn() == 0 {
+					/* nilatic function -- just run it */
+					return fun.Call(nil)[0], true
+
+				} else if method.Type.NumIn() == 1 {
+					/* receiver is first argument; we don't have to check the pointerness of
+					 * the receiver because reflect.Type.MethodByName does that already. */
+					return fun.Call([]reflect.Value{v})[0], true
+				}
+
+				return v, false
+			}
+
+			/* reflect.Type.MethodByName respects pointerness, so we have to test on the value, then
+			 * a pointer-to-value if we've got a non-pointer. We don't have to check the inverse (e.g.
+			 * deref a pointer) because that's done by the inner loop automatically. */
+			if method, ok := typ.MethodByName(name) ; ok {
+				if ret, ok := runMethod(v, method) ; ok {
+					return ret
+				}
+			}
+
+			/* See above; test if the indirected value has a suitable method */
+			if v.Kind() != reflect.Ptr {
+				if method, ok := reflect.PtrTo(typ).MethodByName(name) ; ok && v.CanAddr() {
+					if ret, ok := runMethod(v.Addr(), method) ; ok {
+						return ret
 					}
 				}
 			}
+
 			switch av := v; av.Kind() {
 			case reflect.Ptr:
 				v = av.Elem()

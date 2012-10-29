@@ -61,6 +61,22 @@ func (u *User) Truefunc2() bool {
 	return true
 }
 
+func (u User) Falsefunc1() bool {
+	return false
+}
+
+func (u *User) Falsefunc2() bool {
+	return false
+}
+
+func (u User) IsIdEven() bool {
+	return u.Id % 2 == 0
+}
+
+func (u *User) PIsIdEven() bool {
+	return u.Id % 2 == 0
+}
+
 func makeVector(n int) []interface{} {
 	var v []interface{}
 	for i := 0; i < n; i++ {
@@ -146,10 +162,24 @@ var tests = []Test{
 	{`{{#users}}{{#Func4}}{{name}}{{/Func4}}{{/users}}`, map[string]interface{}{"users": []*User{{"Mike", 1}}}, ""},
 	{`{{#Truefunc1}}abcd{{/Truefunc1}}`, User{"Mike", 1}, "abcd"},
 	{`{{#Truefunc1}}abcd{{/Truefunc1}}`, &User{"Mike", 1}, "abcd"},
+	{`{{^Truefunc1}}abcd{{/Truefunc1}}`, User{"Mike", 1}, ""},
+	{`{{^Truefunc1}}abcd{{/Truefunc1}}`, &User{"Mike", 1}, ""},
 	{`{{#Truefunc2}}abcd{{/Truefunc2}}`, &User{"Mike", 1}, "abcd"},
+	{`{{^Truefunc2}}abcd{{/Truefunc2}}`, &User{"Mike", 1}, ""},
+	{`{{#users}}{{#Truefunc1}}abcd{{/Truefunc1}}{{/users}}`, map[string]*User{"users" : &User{"Mike", 1}}, "abcd"},
+	{`{{#users}}{{^Truefunc1}}abcd{{/Truefunc1}}{{/users}}`, map[string]User{"users" : User{"Mike", 1}}, ""},
+	{`{{^Falsefunc1}}abcd{{/Falsefunc1}}`, User{"Mike", 1}, "abcd"},
+	{`{{^Falsefunc1}}abcd{{/Falsefunc1}}`, &User{"Mike", 1}, "abcd"},
+	{`{{#Falsefunc1}}abcd{{/Falsefunc1}}`, User{"Mike", 1}, ""},
+	{`{{#Falsefunc1}}abcd{{/Falsefunc1}}`, &User{"Mike", 1}, ""},
+	{`{{^Falsefunc2}}abcd{{/Falsefunc2}}`, &User{"Mike", 1}, "abcd"},
+	{`{{#Falsefunc2}}abcd{{/Falsefunc2}}`, &User{"Mike", 1}, ""},
 	{`{{#Func5}}{{#Allow}}abcd{{/Allow}}{{/Func5}}`, &User{"Mike", 1}, "abcd"},
 	{`{{#user}}{{#Func5}}{{#Allow}}abcd{{/Allow}}{{/Func5}}{{/user}}`, map[string]interface{}{"user": &User{"Mike", 1}}, "abcd"},
 	{`{{#user}}{{#Func6}}{{#Allow}}abcd{{/Allow}}{{/Func6}}{{/user}}`, map[string]interface{}{"user": &User{"Mike", 1}}, "abcd"},
+
+	{`{{#users}}{{#PIsIdEven}}{{Name}}{{/PIsIdEven}}{{/users}}`, map[string]interface{}{"users" : []User{User{"Mike", 2}}}, "Mike"},
+	{`{{#users}}{{#IsIdEven}}{{Name}}{{/IsIdEven}}{{/users}}`, map[string]interface{}{"users" : []User{User{"Mike", 2}}}, "Mike"},
 
 	//context chaining
 	{`hello {{#section}}{{name}}{{/section}}`, map[string]interface{}{"section": map[string]string{"name": "world"}}, "hello world"},
